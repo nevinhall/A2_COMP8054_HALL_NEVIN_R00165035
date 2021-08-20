@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>D3: Scaling the Albers USA projection</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.2.8/d3.min.js" type="text/JavaScript"></script>
+        <script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+		<style type="text/css">
+			/* No style rules here yet */		
+		</style>
+	</head>
+	<body>
+		<script type="text/javascript">
+
+		
+			//Width and height
+			var w = 960;
+			var h = 600;
+
+
+            // Map and projection
+            var path = d3.geoPath();
+
+            //Define quantize scale to sort data values into buckets of color
+            var color = d3.scaleSequential().interpolator(d3.interpolateRdYlGn);
+
+                                       // .range(["rgb(0,255,0)","rgb(18,179,0)","rgb(36,179,0)","rgb(53,179,0)","rgb(212,179,0)","rgb(255,211,0)","rgb(255,158,0)","rgb(255,123,0)","rgb(255,70,0)","rgb(255,52,0)","rgb(255,35,0)","rgb(255,17,0)"]);
+                                        //Colors taken from colorbrewer.js, included in the D3 download
+
+            var projection = d3.geoMercator()
+                   .scale(130)
+                  .translate( [w / 2, h / 1.5]);
+
+            var path = d3.geoPath()
+                .projection(projection);
+			//Create SVG element
+			var svg = d3.select("body")
+						.append("svg")
+						.attr("width", w)
+						.attr("height", h);
+
+            
+			//Define what to do when panning or zooming
+			var zooming = function(d) {
+
+            //Log out d3.event.transform, so you can see all the goodies inside
+            //console.log(d3.event.transform);
+
+            //New offset array
+            var offset = [d3.event.transform.x, d3.event.transform.y];
+
+            //Calculate new scale
+            var newScale = d3.event.transform.k * 2000;
+
+            //Update projection with new offset and scale
+            projection.translate(offset)
+                    .scale(newScale);
+
+            //Update all paths and circles
+            svg.selectAll("path")
+                .attr("d", path);
+
+            svg.selectAll("circle")
+                .attr("cx", function(d) {
+                    return projection([d.lon, d.lat])[0];
+                })
+                .attr("cy", function(d) {
+                    return projection([d.lon, d.lat])[1];
+                });
+
+            }
+
+
+  
+
+            //Create a container in which all zoom-able elements will live
+            var map = svg.append("g")
+               
+
+				//Create a new, invisible background rect to catch zoom events
+				map.append("rect")
+				.attr("x", 0)
+				.attr("y", 0)
+				.attr("width", w)
+
+
+
+
+            //Load in Covid-19 data
+            d3.csv("./data/worldometer_data.csv", function(covid_data_csv) {
+                color.domain([
+                    d3.max(covid_data_csv, function(d) { return d.TotCases1Mpop; }),
+					d3.min(covid_data_csv, function(d) { return d.TotCases1Mpop; })
+					
+				]);
+
+                //Load in the world geoJson
+                d3.json("https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson", function(geojson_data){
+
+                    
+                //Bind the data for covid cases to the corresponding country
+                for (var i = 0; i < covid_data_csv.length; i++) {
+				
+                var covid_data_country = covid_data_csv[i].Country;			
+                var covid_data_TotCases1mpop = parseInt(covid_data_csv[i].TotCases1Mpop);	
+                var covid_data_Deaths1Mpop = parseInt(covid_data_csv[i].Deaths1Mpop);
+                var covid_data_pop = parseInt(covid_data_csv[i].Population)
+
+	   
+                    
+                    //For every country in the geojson file check if there is a match in the 
+                    //covid-19 dataset
+                    for (var j = 0; j < geojson_data.features.length; j++) {
+                    
+                        var geojson_country = geojson_data.features[j].properties.name;
+            
+                        if (covid_data_country == geojson_country) {
+                    
+                            //Copy the data value into the JSON
+                            geojson_data.features[j].properties.TotCases1mpop = covid_data_TotCases1mpop;
+                            geojson_data.features[j].properties.Deaths1Mpop =  covid_data_Deaths1Mpop;
+                            geojson_data.features[j].properties.Population =  covid_data_pop;
+
+                            
+                            //Stop looking through the JSON
+                            break;
+                            
+                        }
+                    }	
+                
+            }
+                
+                
+                    //Bind data and create one path per GeoJSON feature
+                    map.selectAll("path")
+                    .data(geojson_data.features)
+                    .enter()
+                    .append("path")
+                    .attr("d", path)
+                    .style("fill", function(d) {
+					   		//Get data value
+					   		var value = d.properties.TotCases1mpop;
+					   		
+					   		if (value) {
+					   			//If value exists…
+						   		return color(value);
+					   		} else {
+					   			//If value is undefined…
+						   		return "#ccc";
+					   		}
+					   })
+                    .on("click",function(d){
+                        console.log(d);
+                        svg.selectAll("text").remove()
+                        svg.append('text')
+                        .attr('x', 100)
+                        .attr('y', 50)
+                        .attr('stroke', 'black')
+                        .style("font-size", 19)
+                        .text("Population:" + d.properties.Population)
+
+                        var color = d3.scaleOrdinal(d3.schemeCategory10);
+
+                        var outerRadius = 50;
+                        var innerRadius = 0;
+                        var arc = d3.arc()
+                                    .innerRadius(innerRadius)
+                                    .outerRadius(outerRadius);
+                        
+                        var pie = d3.pie();
+
+                        	//Set up groups
+                        map.selectAll("g").remove()
+                        console.log(d.properties.Deaths1Mpop);
+			            var arcs = map.selectAll("g.arc")
+						  .data(pie([d.properties.TotCases1mpop, d.properties.Deaths1Mpop]))
+						  .enter()
+						  .append("g")
+						  .attr("class", "arc")
+						  .attr("transform", "translate(" + outerRadius + "," + outerRadius + ")");
+
+                          svg.append("circle").attr("cx",40).attr("cy",330).attr("r", 6).style("fill", "darkgreen")
+                            map.append("circle").attr("cx",40).attr("cy",350).attr("r", 6).style("fill", "darkred")
+                            svg.append("circle").attr("cx",40).attr("cy",370).attr("r", 6).style("fill", "blue")
+                            svg.append("circle").attr("cx",40).attr("cy",390).attr("r", 6).style("fill", "orange")
+                            svg.append("text").attr("x",50).attr("y", 330).text("Low Number of Cases").style("font-size", "15px").attr("alignment-baseline","middle")
+                            svg.append("text").attr("x", 50).attr("y", 350).text("High Number of Cases").style("font-size", "15px")
+                            svg.append("text").attr("x", 50).attr("y", 370).text("Cases").style("font-size", "15px")
+                            map.append("text").attr("x", 50).attr("y", 390).text("Deaths").style("font-size", "15px")
+                        
+
+                        //Draw arc paths
+
+                        arcs.append("path")
+                            .attr("fill", function(d, i) {
+                                return color(i);
+                            })
+                            .attr("d", arc);
+
+                        labels = ["Cases","Deaths"]
+                        arcs.selectAll("text-anchor").remove()
+                        arcs.append("text")
+                        .attr("transform", function(d) {
+                            return "translate(" + arc.centroid(d) + ")";
+                        })
+                        .attr("text-anchor", "middle")
+                        .text(function(d,i) {
+                            return labels[i];
+                        });
+					
+			
+			
+
+                    }).on("dblclick",function(d){ 
+                        if(d.properties.name == "Ireland"){
+                            location.replace("http://localhost/COMP8054/A2_COMP8054_HALL_NEVIN_R00165035/ireland.html")
+                        } else if(d.properties.name == "USA"){
+                            console.log("America map to be displayed");
+                        }
+                         
+                
+                });
+                  
+            
+                });
+
+                
+   
+			})
+
+      
+		</script>
+	</body>
+</html>

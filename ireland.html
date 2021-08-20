@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<title>D3: Scaling the Albers USA projection</title>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/4.2.8/d3.min.js" type="text/JavaScript"></script>
+		<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+		<script src="https://unpkg.com/d3-svg-legend@1.13.0/d3-legend.min.js"></script>
+		<script src="//cdnjs.cloudflare.com/ajax/libs/d3-legend/1.1.0/d3-legend.js"></script>
+		<style type="text/css">
+			/* No style rules here yet */		
+		</style>
+	</head>
+	<body>
+		<button onclick="showConfidence()">show Confidence</button>
+		<button onclick="showCases()">Show Cases</button>
+		<button onclick="mainMap()">Main Map</button>
+
+		<script type="text/javascript">
+		
+		
+		    var prepMap;
+			var prepData2;
+
+			//Width and height
+			var w = 900;
+			var h = 500;
+
+			//Define map projection
+			var projection = d3.geoMercator()
+				.center([0, 0])
+			     .translate([1000,4700])
+				 .scale(4000)
+			
+
+			//Define path generator
+			var path = d3.geoPath()
+							 .projection(projection);
+
+			//Create SVG element
+			var svg = d3.select("body")
+						.append("svg")
+						.attr("width", w)
+						.attr("height", h);
+
+			
+			//Define Colours
+			var color = d3.scaleSequential().interpolator(d3.interpolateRdYlGn);
+			var color2  = d3.scaleSequential().interpolator(d3.interpolateRdYlGn);
+
+		
+
+			//Prep Data
+			const prepData = () => {
+				d3.csv("./data/covid19stats.csv", function(covidData) {
+					d3.csv("./data/data_gov_hospitals.csv", function(data) {
+						 d3.json("./data/ireland_maps.json", function(json) {
+					
+							//Bind Covid Cases for  a county and bind county population
+							for(var i = 0; i < covidData.length; i++ ){
+								for(var i = 0; i < json.features.length; i++){
+									if( covidData[i].CountyName == json.features[i].properties.id){
+										json.features[i].properties.covidCases = covidData[i].PopulationProportionCovidCases
+										json.features[i].properties.totalPop = covidData[i].PopulationCensus16
+										
+									}
+
+								}
+								
+							}
+
+
+							//Count number of hospitals in a county
+							var hospitals_per_county = {};
+							for (var i = 0; i < data.length; i++) {
+								var county = data[i].county
+
+								if (!(county in hospitals_per_county)){
+									hospitals_per_county[county] = 0
+								}
+
+								hospitals_per_county[county] =hospitals_per_county[county] + 1
+							}
+
+							
+							//Bind number of countys and ratio of counties for the population.
+							for(var county in hospitals_per_county){
+								for(var i = 0; i < json.features.length; i++){
+									if(county == json.features[i].properties.id){
+										json.features[i].properties.numHospitals = hospitals_per_county[county]
+										json.features[i].properties.ratioHospitals = (json.features[i].properties.totalPop/json.features[i].properties.numHospitals)	
+									}
+								}
+								
+							}
+							
+							
+							//Determine values for the confiedence stats domain.
+							var hospitalRatios = []
+							for(var i = 0; i < json.features.length; i++){
+								hospitalRatios.push(json.features[i].properties.ratioHospitals)
+							}
+
+							hospitalRatios = hospitalRatios.sort()
+							maxRatio = hospitalRatios[0]
+							lowestRatio = hospitalRatios[20]
+
+							//Define domain ranges.
+							color.domain([lowestRatio,maxRatio]);
+						
+							color2.domain([
+								d3.max(covidData, function(d) { return d.PopulationProportionCovidCases; }),
+								d3.min(covidData, function(d) {  return d.PopulationProportionCovidCases; })
+								
+							]);
+
+							prepData2 = data
+							prepMap = json
+						
+						
+						
+								});
+							
+							
+							});
+						
+							
+						});
+			
+				return [prepMap,prepData2]
+			}
+
+
+			//Onclick show the confidence graph.
+			const mainMap = () => {
+				location.replace("http://localhost/COMP8054/A2_COMP8054_HALL_NEVIN_R00165035/worldCovid.html")
+			}
+			const showConfidence = () => {
+		
+				svg.selectAll("circle").remove()
+				svg.selectAll("path").remove()
+				svg.selectAll("text").remove()
+
+
+				svg.append("circle").attr("cx",100).attr("cy",130).attr("r", 6).style("fill", "darkgreen")
+				svg.append("circle").attr("cx",100).attr("cy",160).attr("r", 6).style("fill", "darkred")
+				svg.append("circle").attr("cx",100).attr("cy",190).attr("r", 6).style("fill", "yellow")
+				svg.append("text").attr("x", 120).attr("y", 130).text("High confidence in testing").style("font-size", "15px").attr("alignment-baseline","middle")
+				svg.append("text").attr("x", 120).attr("y", 160).text("Low confidence").style("font-size", "15px")
+				svg.append("text").attr("x", 120).attr("y", 190).text("Reporting Center").style("font-size", "15px")
+
+				var res = prepData()
+
+				var json = res[0]
+				var data = res[1]
+
+
+				svg.selectAll("path")
+					.data(json.features)
+					.enter()
+			
+					.append("path")
+					.attr("d", path)
+					.style("fill", function(d) {
+						//Get data value
+						var value = d.properties.ratioHospitals;
+						
+						if (value) {
+							//If value exists…
+							return color(value);
+						} else {
+							//If value is undefined…
+							return "#ccc";
+						}
+				})
+
+			
+								
+
+				//Show the percentage of confidence for a region.
+				svg.selectAll("text")
+					.data(json.features)
+					.enter()
+					.append("text")
+					.attr("class", "label")
+					.attr("x", function(d) {
+						return path.centroid(d)[0];
+					})
+					.attr("y", function(d) {
+						return path.centroid(d)[1];
+					})
+					.text(function(d) {
+						console.log(d);
+						if(d.properties.numHospitals){
+							return Math.trunc((d.properties.ratioHospitals / 150000) * 100)+"%"
+						}
+
+						return 0	
+				});
+
+
+
+				//Plot the testing centers.
+				svg.selectAll("circle")
+					.data(data)
+					.enter()
+					.append("circle")
+					.attr("cx", function(d) {
+						return projection([d.lon,d.lat])[0];
+					})
+					.attr("cy", function(d) {
+						return projection([d.lon,d.lat])[1];
+					})
+					.attr("r", function(d) {
+							return 5;
+					})
+					.style("fill", "yellow")
+					.style("stroke", "gray")
+					.style("stroke-width", 0.25)
+					.style("opacity", 0.75)
+			}
+
+
+
+			//Show cases for a region
+			const showCases = () => {
+				svg.selectAll("circle").remove()
+				svg.selectAll("path").remove()
+				svg.selectAll("text").remove()
+
+				svg.append("circle").attr("cx",80).attr("cy",130).attr("r", 6).style("fill", "darkred")
+				svg.append("circle").attr("cx",80).attr("cy",160).attr("r", 6).style("fill", "darkgreen")
+				svg.append("circle").attr("cx",80).attr("cy",190).attr("r", 6).style("fill", "yellow")
+				svg.append("text").attr("x", 100).attr("y", 130).text("High number of covid cases").style("font-size", "15px").attr("alignment-baseline","middle")
+				svg.append("text").attr("x", 100).attr("y", 160).text("Low number of covid cases").style("font-size", "15px")
+				svg.append("text").attr("x", 100).attr("y", 190).text("Outbreak in a given reporting center").style("font-size", "15px")
+
+		
+								
+				var res = prepData()
+				
+				var json = res[0]
+				var data = res[1]
+
+				svg.selectAll("path")
+					.data(json.features)
+					.enter()
+					.append("path")
+					.attr("d", path)
+					.style("fill", function(d) {
+						//Get data value
+						var value = d.properties.covidCases;
+						if (value) {
+							//If value exists…
+							console.log("color  is",color(Math.trunc(value)));
+							console.log("Value is",Math.trunc(value));
+							return color2(Math.trunc(value));
+						} else {
+							//If value is undefined…
+							return "#ccc";
+								}
+					})
+
+						
+
+				console.log("This is data", data);
+				svg.selectAll("circle")
+					.data(data)
+					.enter()
+					.append("circle")
+					.attr("cx", function(d) {
+						return projection([d.lon,d.lat])[0];
+					})
+					.attr("cy", function(d) {
+						return projection([d.lon,d.lat])[1];
+					})
+					.attr("r", function(d) {
+						return(10)
+						// for(var i = 0; i < json.features.length; i ++){
+						// 	for(var j = 0; j < data.length;j++){
+						// 		console.log("if",json.features[i].properties.id,"==", data[j].county);
+						// 		if(json.features[i].properties.id == data[j].county){
+						// 			console.log(("found"));
+						// 			return data[j].covidCases
+						// 		}
+						// 	}
+						
+							
+						// }
+					
+					})
+					.style("fill", "yellow")
+					.style("stroke", "gray")
+					.style("stroke-width", 0.25)
+					.style("opacity", 0.75)
+			}
+		</script>
+	</body>
+</html>
+
+
+
